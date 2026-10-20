@@ -1,0 +1,6 @@
+{
+  "name": "NexiInvoice",
+  "description": "NexiInvoice To NexiSlip — The Quickest Way to Bill Your Clients. Professional invoices and billing slips with instant exports, live preview, daily quota management, and client billing.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

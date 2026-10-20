@@ -1,0 +1,116 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile with role, subscription status, and business settings",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "email": { "type": "string" },
+        "displayName": { "type": "string" },
+        "photoURL": { "type": "string" },
+        "role": { "type": "string", "enum": ["user", "admin"] },
+        "plan": { "type": "string", "enum": ["free", "monthly_pro", "annual_pro", "enterprise_admin"] },
+        "subscriptionStatus": { "type": "string", "enum": ["active", "inactive", "cancelled", "past_due"] },
+        "invoiceCount": { "type": "number" },
+        "timezone": { "type": "string" },
+        "themePreference": { "type": "string", "enum": ["light", "dark", "system"] },
+        "lastLoginAt": { "type": "string" },
+        "lastSeenAt": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "email", "role", "plan", "subscriptionStatus"]
+    },
+    "Invoice": {
+      "title": "Invoice",
+      "description": "Invoice document owned by a user",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "ownerId": { "type": "string" },
+        "invoiceNumber": { "type": "string" },
+        "status": { "type": "string", "enum": ["draft", "sent", "partially_paid", "paid", "overdue", "cancelled"] },
+        "currency": { "type": "string" },
+        "issueDate": { "type": "string" },
+        "dueDate": { "type": "string" },
+        "subtotal": { "type": "number" },
+        "discount": { "type": "number" },
+        "taxRate": { "type": "number" },
+        "taxAmount": { "type": "number" },
+        "extraCharges": { "type": "number" },
+        "total": { "type": "number" },
+        "amountPaid": { "type": "number" },
+        "balanceDue": { "type": "number" },
+        "templateId": { "type": "string" },
+        "notes": { "type": "string" },
+        "paymentInstructions": { "type": "string" },
+        "termsAndConditions": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "ownerId", "invoiceNumber", "status", "currency", "total"]
+    },
+    "DailyUsage": {
+      "title": "DailyUsage",
+      "description": "Server-controlled record of daily invoice generation per user",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "dateKey": { "type": "string" },
+        "invoicesCreated": { "type": "number" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["userId", "dateKey", "invoicesCreated"]
+    },
+    "Subscription": {
+      "title": "Subscription",
+      "description": "Subscription records",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "ownerId": { "type": "string" },
+        "plan": { "type": "string" },
+        "status": { "type": "string" },
+        "provider": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "ownerId", "plan", "status"]
+    },
+    "AdminDoc": {
+      "title": "AdminDoc",
+      "description": "Admin identity marker",
+      "type": "object",
+      "properties": {
+        "email": { "type": "string" },
+        "role": { "type": "string" },
+        "grantedAt": { "type": "string" }
+      },
+      "required": ["email", "role"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profiles and settings"
+    },
+    "/invoices/{invoiceId}": {
+      "schema": "Invoice",
+      "description": "Invoices owned by user"
+    },
+    "/dailyUsage/{usageId}": {
+      "schema": "DailyUsage",
+      "description": "Daily usage limit records"
+    },
+    "/subscriptions/{subId}": {
+      "schema": "Subscription",
+      "description": "User subscription data"
+    },
+    "/admins/{adminId}": {
+      "schema": "AdminDoc",
+      "description": "Authorized administrator registry"
+    }
+  }
+}
