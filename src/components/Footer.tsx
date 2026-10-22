@@ -25,7 +25,7 @@ export const Footer: React.FC<FooterProps> = ({
           {/* Brand info */}
           <div className="md:col-span-1 space-y-4">
             <div className="flex items-center gap-2.5">
-              <div className="w-8 h-8 rounded-xl overflow-hidden shadow-md shadow-indigo-500/15 flex items-center justify-center bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 p-0.5">
+              <div className="w-9 h-9 rounded-xl overflow-hidden shadow-md shadow-indigo-500/15 flex items-center justify-center bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 p-0.5">
                 <img src="/logo.png" alt="NexiSlip Logo" className="w-full h-full object-contain filter drop-shadow-sm" />
               </div>
               <div className="flex items-center">

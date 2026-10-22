@@ -93,6 +93,9 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         <div className="p-6 sm:p-8">
           {/* Header */}
           <div className="text-center mb-6">
+            <div className="w-12 h-12 mx-auto mb-3 rounded-2xl overflow-hidden shadow-md shadow-indigo-500/15 flex items-center justify-center bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 p-1">
+              <img src="/logo.png" alt="NexiSlip Logo" className="w-full h-full object-contain filter drop-shadow-sm" />
+            </div>
             <h3 className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-white">
               {mode === 'signin' && 'Welcome back to NexiSlip'}
               {mode === 'signup' && 'Create your NexiSlip account'}
