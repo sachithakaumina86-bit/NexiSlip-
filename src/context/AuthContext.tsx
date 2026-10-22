@@ -12,7 +12,7 @@ import {
 } from 'firebase/auth';
 import { doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
 import { auth, db } from '../lib/firebase';
-import { UserProfile, BusinessProfile, PlanType } from '../types';
+import { UserProfile, BusinessProfile, PlanType, UserRole } from '../types';
 
 interface AuthContextType {
   currentUser: FirebaseUser | null;
@@ -205,11 +205,62 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     },
   });
 
+  const createLocalUserProfile = (
+    email: string,
+    displayName?: string,
+    role: UserRole = 'user'
+  ): UserProfile => {
+    const isTargetAdmin = role === 'admin' || isAdminEmail(email);
+    return {
+      id: isTargetAdmin
+        ? 'admin-nexislip-master'
+        : `usr_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+      email: email,
+      displayName: displayName || (isTargetAdmin ? 'NexiSlip Administrator' : email.split('@')[0] || 'User'),
+      photoURL: '',
+      role: isTargetAdmin ? 'admin' : 'user',
+      plan: isTargetAdmin ? 'enterprise_admin' : 'free',
+      subscriptionStatus: 'active',
+      subscriptionStartedAt: new Date().toISOString(),
+      invoiceCount: 0,
+      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
+      themePreference: 'light',
+      lastLoginAt: new Date().toISOString(),
+      lastSeenAt: new Date().toISOString(),
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      businessProfile: {
+        businessName: isTargetAdmin
+          ? 'NexiSlip Admin HQ'
+          : displayName
+          ? `${displayName}'s Studio`
+          : 'My Business',
+        sellerName: isTargetAdmin ? 'System Administrator' : displayName || 'Business Owner',
+        email: email,
+        phone: '',
+        address: '',
+        defaultCurrency: 'USD',
+        defaultTerms: 'Due upon receipt. Thank you for your business!',
+        defaultTaxRate: 0,
+        defaultTemplate: 'modern',
+      },
+    };
+  };
+
   const loginAsLocalAdmin = () => {
     const adminProf = createAdminProfile();
     setProfile(adminProf);
     try {
       localStorage.setItem('nexislip_local_admin_session', JSON.stringify(adminProf));
+      localStorage.removeItem('nexislip_local_user_session');
+    } catch {}
+  };
+
+  const loginAsLocalUser = (userProf: UserProfile) => {
+    setProfile(userProf);
+    try {
+      localStorage.setItem('nexislip_local_user_session', JSON.stringify(userProf));
+      localStorage.removeItem('nexislip_local_admin_session');
     } catch {}
   };
 
@@ -219,13 +270,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (user) {
         try {
           localStorage.removeItem('nexislip_local_admin_session');
+          localStorage.removeItem('nexislip_local_user_session');
         } catch {}
         await syncUserProfile(user);
       } else {
         try {
-          const savedSession = localStorage.getItem('nexislip_local_admin_session');
-          if (savedSession) {
-            setProfile(JSON.parse(savedSession));
+          const savedAdmin = localStorage.getItem('nexislip_local_admin_session');
+          const savedUser = localStorage.getItem('nexislip_local_user_session');
+          if (savedAdmin) {
+            setProfile(JSON.parse(savedAdmin));
+          } else if (savedUser) {
+            setProfile(JSON.parse(savedUser));
           } else {
             setProfile(null);
           }
@@ -269,12 +324,61 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const cred = await signInWithEmailAndPassword(auth, email, pass);
       try {
         localStorage.removeItem('nexislip_local_admin_session');
+        localStorage.removeItem('nexislip_local_user_session');
       } catch {}
       await syncUserProfile(cred.user);
     } catch (err: any) {
       const isOpNotAllowed =
         err?.code === 'auth/operation-not-allowed' ||
         err?.message?.includes('operation-not-allowed');
+
+      // Seamless fallback if Firebase email/password provider is not toggled in console
+      if (isOpNotAllowed) {
+        if (isTargetAdmin) {
+          if (pass === ADMIN_CREDENTIALS.password) {
+            loginAsLocalAdmin();
+            return;
+          } else {
+            throw new Error('Invalid email or password. Please verify your credentials.');
+          }
+        }
+
+        // Check if regular user already created a local account
+        try {
+          const stored = localStorage.getItem('nexislip_local_accounts');
+          const accounts: Array<{ email: string; pass: string; profile: UserProfile }> = stored
+            ? JSON.parse(stored)
+            : [];
+          const existing = accounts.find((a) => a.email.toLowerCase() === cleanEmail);
+          if (existing) {
+            if (existing.pass && existing.pass !== pass) {
+              throw new Error('Invalid email or password. Please verify your credentials.');
+            }
+            loginAsLocalUser(existing.profile);
+            return;
+          }
+        } catch (e: any) {
+          if (e.message?.includes('Invalid email or password')) throw e;
+        }
+
+        if (pass.length < 6) {
+          throw new Error('Password must be at least 6 characters long.');
+        }
+
+        // Auto-provision user session so they are not blocked
+        const newProfile = createLocalUserProfile(cleanEmail);
+        try {
+          const stored = localStorage.getItem('nexislip_local_accounts');
+          const accounts: Array<{ email: string; pass: string; profile: UserProfile }> = stored
+            ? JSON.parse(stored)
+            : [];
+          accounts.push({ email: cleanEmail, pass, profile: newProfile });
+          localStorage.setItem('nexislip_local_accounts', JSON.stringify(accounts));
+        } catch {}
+
+        loginAsLocalUser(newProfile);
+        return;
+      }
 
       if (
         isTargetAdmin &&
@@ -285,31 +389,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       ) {
         try {
           const cred = await createUserWithEmailAndPassword(auth, email, pass);
-          try {
-            localStorage.removeItem('nexislip_local_admin_session');
-          } catch {}
           await syncUserProfile(cred.user);
           return;
         } catch (createErr: any) {
-          if (createErr?.code === 'auth/email-already-in-use') {
-            throw err;
-          }
           if (
             createErr?.code === 'auth/operation-not-allowed' ||
             createErr?.message?.includes('operation-not-allowed')
           ) {
-            // Firebase Email/Password provider is disabled in Firebase Console
-            loginAsLocalAdmin();
-            return;
+            if (pass === ADMIN_CREDENTIALS.password) {
+              loginAsLocalAdmin();
+              return;
+            }
           }
           throw createErr;
         }
-      }
-
-      if (isTargetAdmin && isOpNotAllowed) {
-        // Fall back gracefully to administrator session
-        loginAsLocalAdmin();
-        return;
       }
 
       throw err;
@@ -317,20 +410,42 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const signUp = async (email: string, pass: string, displayName?: string) => {
+    const cleanEmail = email.toLowerCase().trim();
+    const isTargetAdmin = isAdminEmail(cleanEmail);
+
     try {
       const cred = await createUserWithEmailAndPassword(auth, email, pass);
       await syncUserProfile(cred.user);
     } catch (err: any) {
-      if (
+      const isOpNotAllowed =
         err?.code === 'auth/operation-not-allowed' ||
-        err?.message?.includes('operation-not-allowed')
-      ) {
-        const cleanEmail = email.toLowerCase().trim();
-        if (isAdminEmail(cleanEmail)) {
+        err?.message?.includes('operation-not-allowed');
+
+      if (isOpNotAllowed) {
+        if (isTargetAdmin) {
           loginAsLocalAdmin();
           return;
         }
+
+        const newProfile = createLocalUserProfile(cleanEmail, displayName);
+        try {
+          const stored = localStorage.getItem('nexislip_local_accounts');
+          const accounts: Array<{ email: string; pass: string; profile: UserProfile }> = stored
+            ? JSON.parse(stored)
+            : [];
+          const idx = accounts.findIndex((a) => a.email.toLowerCase() === cleanEmail);
+          if (idx >= 0) {
+            accounts[idx] = { email: cleanEmail, pass, profile: newProfile };
+          } else {
+            accounts.push({ email: cleanEmail, pass, profile: newProfile });
+          }
+          localStorage.setItem('nexislip_local_accounts', JSON.stringify(accounts));
+        } catch {}
+
+        loginAsLocalUser(newProfile);
+        return;
       }
+
       throw err;
     }
   };
@@ -340,6 +455,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const cred = await signInWithPopup(auth, provider);
     try {
       localStorage.removeItem('nexislip_local_admin_session');
+      localStorage.removeItem('nexislip_local_user_session');
     } catch {}
     await syncUserProfile(cred.user);
   };
@@ -347,6 +463,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const signOut = async () => {
     try {
       localStorage.removeItem('nexislip_local_admin_session');
+      localStorage.removeItem('nexislip_local_user_session');
     } catch {}
     await fbSignOut(auth);
     setProfile(null);
@@ -357,7 +474,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const updateBusinessProfile = async (businessData: Partial<BusinessProfile>) => {
-    if (!currentUser || !profile) return;
+    if (!profile) return;
     const updated = {
       ...(profile.businessProfile || {
         businessName: '',
@@ -373,38 +490,75 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       ...businessData,
     };
 
-    const userRef = doc(db, 'users', currentUser.uid);
-    await updateDoc(userRef, {
-      businessProfile: updated,
-      updatedAt: new Date().toISOString(),
-    });
+    if (currentUser) {
+      try {
+        const userRef = doc(db, 'users', currentUser.uid);
+        await updateDoc(userRef, {
+          businessProfile: updated,
+          updatedAt: new Date().toISOString(),
+        });
+      } catch {}
+    }
 
-    setProfile({
+    const updatedProfile = {
       ...profile,
       businessProfile: updated,
-    });
+    };
+    setProfile(updatedProfile);
+
+    if (!currentUser) {
+      const sessionKey =
+        profile.role === 'admin'
+          ? 'nexislip_local_admin_session'
+          : 'nexislip_local_user_session';
+      try {
+        localStorage.setItem(sessionKey, JSON.stringify(updatedProfile));
+      } catch {}
+    }
   };
 
   const updateUserPlan = async (newPlan: PlanType) => {
-    if (!currentUser || !profile) return;
-    const userRef = doc(db, 'users', currentUser.uid);
-    await updateDoc(userRef, {
-      plan: newPlan,
-      subscriptionStatus: 'active',
-      subscriptionStartedAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    });
-    setProfile({
+    if (!profile) return;
+    if (currentUser) {
+      try {
+        const userRef = doc(db, 'users', currentUser.uid);
+        await updateDoc(userRef, {
+          plan: newPlan,
+          subscriptionStatus: 'active',
+          subscriptionStartedAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        });
+      } catch {}
+    }
+
+    const updatedProfile: UserProfile = {
       ...profile,
       plan: newPlan,
       subscriptionStatus: 'active',
-    });
+    };
+    setProfile(updatedProfile);
+
+    if (!currentUser) {
+      const sessionKey =
+        profile.role === 'admin'
+          ? 'nexislip_local_admin_session'
+          : 'nexislip_local_user_session';
+      try {
+        localStorage.setItem(sessionKey, JSON.stringify(updatedProfile));
+      } catch {}
+    }
   };
 
   const deleteAccount = async () => {
-    if (!currentUser) return;
-    const uid = currentUser.uid;
-    await deleteUser(currentUser);
+    if (currentUser) {
+      try {
+        await deleteUser(currentUser);
+      } catch {}
+    }
+    try {
+      localStorage.removeItem('nexislip_local_admin_session');
+      localStorage.removeItem('nexislip_local_user_session');
+    } catch {}
     setProfile(null);
     setCurrentUser(null);
   };

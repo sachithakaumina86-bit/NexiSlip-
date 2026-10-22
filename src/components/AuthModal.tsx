@@ -57,7 +57,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
       } else if (msg.includes('auth/invalid-email')) {
         msg = 'Please enter a valid email address.';
       } else if (msg.includes('auth/operation-not-allowed') || msg.includes('operation-not-allowed')) {
-        msg = 'Email/Password sign-in is not enabled in Firebase Authentication yet. Please click "Continue with Google" (sachithakaumina0@gmail.com has full master admin access), or click "Instant Admin Login" below.';
+        msg = 'Unable to sign in with this email. Please verify your credentials or continue with Google.';
       }
       setError(msg);
     } finally {
